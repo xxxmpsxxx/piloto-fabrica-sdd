@@ -1,0 +1,29 @@
+# OPCIONAL: revisão automática do PR por Claude, apenas como COMENTÁRIOS.
+# Não substitui o gate G4: a aprovação do PR continua sendo de um humano (CODEOWNER).
+# Requer o secret ANTHROPIC_API_KEY. Confira os inputs na documentação de anthropics/claude-code-action.
+name: ai-review
+
+on:
+  pull_request:
+    types: [opened, ready_for_review]
+
+permissions:
+  contents: read
+  pull-requests: write
+
+jobs:
+  review:
+    if: github.event.pull_request.draft == false
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: anthropics/claude-code-action@v1
+        with:
+          anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
+          prompt: |
+            Revise este Pull Request seguindo .claude/agents/code-reviewer.md e .claude/agents/security-reviewer.md.
+            Compare o diff com specs/<feature da branch>/spec.md, plan.md e tasks.md.
+            Publique os achados como comentário no PR, em português, com severidade e arquivo:linha.
+            Não aprove, não solicite mudanças formalmente e não faça commits.

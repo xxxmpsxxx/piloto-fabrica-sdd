@@ -1,0 +1,50 @@
+name: ci
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+env:
+  DOTNET_NOLOGO: true
+  DOTNET_CLI_TELEMETRY_OPTOUT: true
+
+jobs:
+  build-test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          global-json-file: global.json   # fixe a versão do SDK no repositório
+
+      - name: Restore
+        run: dotnet restore
+
+      - name: Formatação
+        run: dotnet format --verify-no-changes --no-restore
+
+      - name: Build (warnings como erro)
+        run: dotnet build --no-restore -c Release -warnaserror
+
+      - name: Testes (Testcontainers usa o Docker do runner)
+        run: dotnet test --no-build -c Release --collect:"XPlat Code Coverage" --logger "trx;LogFileName=results.trx" --results-directory ./TestResults
+
+      - name: Pacotes vulneráveis
+        run: |
+          dotnet list package --vulnerable --include-transitive 2>&1 | tee vuln.txt
+          if grep -qE '\b(High|Critical)\b' vuln.txt; then
+            echo "::error::Dependências com vulnerabilidade High/Critical"; exit 1
+          fi
+
+      - name: Publicar resultados
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-results
+          path: TestResults/

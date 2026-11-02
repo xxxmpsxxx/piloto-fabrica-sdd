@@ -1,0 +1,73 @@
+{
+  "$schema": "https://json.schemastore.org/claude-code-settings.json",
+  "permissions": {
+    "defaultMode": "default",
+    "allow": [
+      "Bash(dotnet build:*)",
+      "Bash(dotnet test:*)",
+      "Bash(dotnet restore:*)",
+      "Bash(dotnet format:*)",
+      "Bash(dotnet list package:*)",
+      "Bash(dotnet ef migrations add:*)",
+      "Bash(dotnet ef migrations script:*)",
+      "Bash(git status:*)",
+      "Bash(git diff:*)",
+      "Bash(git log:*)",
+      "Bash(git branch:*)",
+      "Bash(./scripts/fabrica/verify-gates.sh:*)",
+      "Bash(.specify/scripts/bash/*:*)"
+    ],
+    "ask": [
+      "Bash(git commit:*)",
+      "Bash(git push:*)",
+      "Bash(gh pr create:*)",
+      "Bash(gh issue create:*)",
+      "Bash(dotnet add package:*)",
+      "Bash(docker build:*)",
+      "Bash(docker compose:*)",
+      "WebFetch"
+    ],
+    "deny": [
+      "Bash(./scripts/fabrica/approve.sh:*)",
+      "Bash(scripts/fabrica/approve.sh:*)",
+      "Bash(gh pr merge:*)",
+      "Bash(gh pr review:*)",
+      "Bash(git push --force:*)",
+      "Bash(dotnet ef database update:*)",
+      "Edit(specs/**/approvals/**)",
+      "Write(specs/**/approvals/**)",
+      "Edit(.specify/approvals/**)",
+      "Write(.specify/approvals/**)",
+      "Edit(.claude/settings.json)",
+      "Edit(.claude/hooks/**)",
+      "Edit(scripts/fabrica/**)",
+      "Read(./.env)",
+      "Read(./.env.*)",
+      "Read(**/appsettings.Production.json)",
+      "Read(**/secrets.json)"
+    ]
+  },
+  "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "Write|Edit|MultiEdit|NotebookEdit",
+        "hooks": [
+          { "type": "command", "command": "\"$CLAUDE_PROJECT_DIR\"/.claude/hooks/gate-check.sh" }
+        ]
+      },
+      {
+        "matcher": "Bash",
+        "hooks": [
+          { "type": "command", "command": "\"$CLAUDE_PROJECT_DIR\"/.claude/hooks/guard-bash.sh" }
+        ]
+      }
+    ],
+    "SessionStart": [
+      {
+        "hooks": [
+          { "type": "command", "command": "\"$CLAUDE_PROJECT_DIR\"/scripts/fabrica/verify-gates.sh || true" }
+        ]
+      }
+    ]
+  }
+}

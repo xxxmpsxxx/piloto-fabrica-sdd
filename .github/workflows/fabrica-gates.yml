@@ -1,0 +1,62 @@
+# Gates da Fábrica SDD — torne este check OBRIGATÓRIO na branch protection de main.
+# Bloqueia o merge de PRs que alteram código sem G0–G3 (spec/plano/tarefas) e G5 (QA)
+# aprovados por humanos e com hash válido (artefato não mudou após a aprovação).
+name: fabrica-gates
+
+on:
+  pull_request:
+    branches: [main]
+    types: [opened, synchronize, reopened, labeled, unlabeled]
+
+permissions:
+  contents: read
+  pull-requests: read
+
+jobs:
+  gates:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Arquivos alterados
+        id: diff
+        run: |
+          git diff --name-only "origin/${{ github.base_ref }}...HEAD" > changed.txt
+          cat changed.txt
+          # Código = tudo que não é documentação/artefato SDD
+          if grep -vqE '^(specs/|docs/|\.specify/|fabrica/|README\.md|CHANGELOG\.md|CLAUDE\.md)' changed.txt; then
+            echo "code=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "code=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Aprovações devem ter autor humano
+        run: |
+          bad=$(git log --format='%an <%ae>' "origin/${{ github.base_ref }}..HEAD" -- 'specs/*/approvals/*' '.specify/approvals/*' \
+                | grep -Ei '\[bot\]|github-actions|noreply@anthropic\.com' || true)
+          if [ -n "$bad" ]; then
+            echo "::error::Registros de aprovação commitados por automação: $bad"
+            exit 1
+          fi
+
+      - name: Exceção autorizada (label fabrica-excecao)
+        id: exc
+        if: contains(github.event.pull_request.labels.*.name, 'fabrica-excecao')
+        run: |
+          echo "::warning::PR com label fabrica-excecao: gates SDD ignorados. Exige justificativa na descrição e aprovação de CODEOWNER."
+          echo "skip=true" >> "$GITHUB_OUTPUT"
+
+      - name: Verificar gates
+        if: steps.exc.outputs.skip != 'true'
+        env:
+          GITHUB_HEAD_REF: ${{ github.head_ref }}
+        run: |
+          chmod +x scripts/fabrica/*.sh
+          ./scripts/fabrica/verify-gates.sh || true
+          if [ "${{ steps.diff.outputs.code }}" = "true" ]; then
+            ./scripts/fabrica/verify-gates.sh --require G0 G1 G2 G3 G5
+          else
+            ./scripts/fabrica/verify-gates.sh --require G0
+          fi
