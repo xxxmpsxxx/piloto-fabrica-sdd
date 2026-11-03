@@ -8,5 +8,6 @@ Spec Kit instalado: `specify-cli` 1.2.7.dev0 (integração `claude`, scripts `sh
 | 2026-11-02 | Setup (A4) | Spec Kit 1.2.7 instala skills (`/speckit-constitution`) em `.claude/skills`, não comandos `/speckit.constitution` | Roteiro e README do kit devem citar `/speckit-*` |
 | 2026-11-02 | Setup (A4) | Windows ARM64: `uv` falha ao instalar Python gerenciado e `cryptography` não tem wheel ARM64 | Python 3.13 x64 em `C:\Python313-x64` + `uvx --python <caminho>` |
 | 2026-11-02 | Setup (A4) | Só um usuário GitHub (xxxmpsxxx): CODEOWNERS aponta tudo para ele; autor não aprova o próprio PR | Rever ruleset na B3 |
+| 2026-11-02 | Setup v2 | Repositório já existia no GitHub com Spec Kit e kit v1; `git init` local foi alinhado ao `origin/main` | Restos v1 removidos (hooks, scripts/fabrica, comandos antigos, cd/ai-review); CODEOWNERS simplificado; ruleset sem aprovação exigida (revisor único) |
 
 ## Pendências

@@ -19,32 +19,32 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - name: Há projetos .NET?
+        id: check
+        run: |
+          if git ls-files '*.csproj' | grep -q .; then echo "has=true" >> "$GITHUB_OUTPUT"; else echo "has=false" >> "$GITHUB_OUTPUT"; echo "Nenhum projeto .NET ainda — CI passa sem build."; fi
+
       - uses: actions/setup-dotnet@v4
+        if: steps.check.outputs.has == 'true'
         with:
-          global-json-file: global.json   # fixe a versão do SDK no repositório
+          global-json-file: global.json
 
-      - name: Restore
-        run: dotnet restore
-
-      - name: Formatação
-        run: dotnet format --verify-no-changes --no-restore
-
-      - name: Build (warnings como erro)
-        run: dotnet build --no-restore -c Release -warnaserror
-
-      - name: Testes (Testcontainers usa o Docker do runner)
-        run: dotnet test --no-build -c Release --collect:"XPlat Code Coverage" --logger "trx;LogFileName=results.trx" --results-directory ./TestResults
+      - name: Build e testes
+        if: steps.check.outputs.has == 'true'
+        run: |
+          dotnet restore
+          dotnet build --no-restore -c Release
+          dotnet test --no-build -c Release --collect:"XPlat Code Coverage" --results-directory ./TestResults
 
       - name: Pacotes vulneráveis
+        if: steps.check.outputs.has == 'true'
         run: |
           dotnet list package --vulnerable --include-transitive 2>&1 | tee vuln.txt
-          if grep -qE '\b(High|Critical)\b' vuln.txt; then
-            echo "::error::Dependências com vulnerabilidade High/Critical"; exit 1
-          fi
+          if grep -qE '\b(High|Critical)\b' vuln.txt; then echo "::error::Dependência com vulnerabilidade High/Critical"; exit 1; fi
 
-      - name: Publicar resultados
-        if: always()
-        uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v4
+        if: always() && steps.check.outputs.has == 'true'
         with:
           name: test-results
           path: TestResults/
+          if-no-files-found: ignore

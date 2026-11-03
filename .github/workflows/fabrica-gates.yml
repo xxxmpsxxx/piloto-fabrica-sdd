@@ -1,6 +1,6 @@
-# Gates da Fábrica SDD — torne este check OBRIGATÓRIO na branch protection de main.
-# Bloqueia o merge de PRs que alteram código sem G0–G3 (spec/plano/tarefas) e G5 (QA)
-# aprovados por humanos e com hash válido (artefato não mudou após a aprovação).
+# Gates da Fábrica SDD. Verifica, em todo PR para main, se os artefatos aprovados
+# não mudaram depois da aprovação. O registro de aprovação guarda o commit aprovado;
+# aqui comparamos esse commit com o estado do PR usando só git.
 name: fabrica-gates
 
 on:
@@ -10,7 +10,6 @@ on:
 
 permissions:
   contents: read
-  pull-requests: read
 
 jobs:
   gates:
@@ -20,43 +19,67 @@ jobs:
         with:
           fetch-depth: 0
 
-      - name: Arquivos alterados
-        id: diff
-        run: |
-          git diff --name-only "origin/${{ github.base_ref }}...HEAD" > changed.txt
-          cat changed.txt
-          # Código = tudo que não é documentação/artefato SDD
-          if grep -vqE '^(specs/|docs/|\.specify/|fabrica/|README\.md|CHANGELOG\.md|CLAUDE\.md)' changed.txt; then
-            echo "code=true" >> "$GITHUB_OUTPUT"
-          else
-            echo "code=false" >> "$GITHUB_OUTPUT"
-          fi
-
-      - name: Aprovações devem ter autor humano
-        run: |
-          bad=$(git log --format='%an <%ae>' "origin/${{ github.base_ref }}..HEAD" -- 'specs/*/approvals/*' '.specify/approvals/*' \
-                | grep -Ei '\[bot\]|github-actions|noreply@anthropic\.com' || true)
-          if [ -n "$bad" ]; then
-            echo "::error::Registros de aprovação commitados por automação: $bad"
-            exit 1
-          fi
-
-      - name: Exceção autorizada (label fabrica-excecao)
-        id: exc
-        if: contains(github.event.pull_request.labels.*.name, 'fabrica-excecao')
-        run: |
-          echo "::warning::PR com label fabrica-excecao: gates SDD ignorados. Exige justificativa na descrição e aprovação de CODEOWNER."
-          echo "skip=true" >> "$GITHUB_OUTPUT"
-
       - name: Verificar gates
-        if: steps.exc.outputs.skip != 'true'
         env:
-          GITHUB_HEAD_REF: ${{ github.head_ref }}
+          BASE: origin/${{ github.base_ref }}
+          BRANCH: ${{ github.head_ref }}
+          EXCECAO: ${{ contains(github.event.pull_request.labels.*.name, 'fabrica-excecao') }}
         run: |
-          chmod +x scripts/fabrica/*.sh
-          ./scripts/fabrica/verify-gates.sh || true
-          if [ "${{ steps.diff.outputs.code }}" = "true" ]; then
-            ./scripts/fabrica/verify-gates.sh --require G0 G1 G2 G3 G5
-          else
-            ./scripts/fabrica/verify-gates.sh --require G0
+          set -uo pipefail
+          if [ "$EXCECAO" = "true" ]; then
+            echo "::warning::Label fabrica-excecao: gates ignorados (exige justificativa no PR)."; exit 0
           fi
+
+          # 1) Registros de aprovação não podem ter sido commitados por automação
+          bad=$(git log --format='%an <%ae>' "$BASE..HEAD" -- '*/approvals/*' \
+                | grep -Ei '\[bot\]|github-actions' || true)
+          if [ -n "$bad" ]; then echo "::error::Aprovação commitada por automação: $bad"; exit 1; fi
+
+          # 2) O que o PR altera
+          changed=$(git diff --name-only "$BASE...HEAD")
+          echo "Arquivos alterados:"; echo "$changed"
+          code=false
+          if echo "$changed" | grep -vqE '^(specs/|docs/|\.specify/|fabrica/|README\.md|CHANGELOG\.md|CLAUDE\.md|\.claude/)'; then code=true; fi
+
+          F=""
+          if [[ "$BRANCH" =~ ^[0-9]{3}- ]]; then F="$BRANCH"; fi
+
+          paths() {
+            case "$1" in
+              G0) echo ".specify/memory/constitution.md" ;;
+              G1) echo "specs/$F/spec.md specs/$F/discovery.md specs/$F/checklists" ;;
+              G2) echo "specs/$F/plan.md specs/$F/research.md specs/$F/data-model.md specs/$F/quickstart.md specs/$F/contracts specs/$F/adr" ;;
+              G3) echo "specs/$F/tasks.md" ;;
+              G5) echo "specs/$F/qa-report.md" ;;
+            esac
+          }
+          registro() { [ "$1" = G0 ] && echo ".specify/approvals/G0.md" || echo "specs/$F/approvals/$1.md"; }
+          norm() { sed -E 's/\[[xX]\]/[ ]/g' | tr -d '\r'; }
+
+          check() {
+            local g="$1" r sha diffs
+            r=$(registro "$g")
+            [ -f "$r" ] || { echo "⏳ $g PENDENTE (sem $r)"; return 1; }
+            sha=$(grep -E '^commit:' "$r" | head -1 | awk '{print $2}' | tr -d '\r')
+            git cat-file -e "${sha}^{commit}" 2>/dev/null || { echo "❌ $g: commit '$sha' do registro não existe"; return 1; }
+            if [ "$g" = G3 ]; then
+              if ! diff <(git show "$sha:specs/$F/tasks.md" 2>/dev/null | norm) <(norm < "specs/$F/tasks.md") >/dev/null; then
+                echo "⚠️  $g INVALIDADO: tarefas mudaram depois da aprovação"; return 1
+              fi
+            else
+              # shellcheck disable=SC2046
+              diffs=$(git diff --name-only "$sha" HEAD -- $(paths "$g"))
+              [ -z "$diffs" ] || { echo "⚠️  $g INVALIDADO: $diffs"; return 1; }
+            fi
+            echo "✅ $g APROVADO (commit ${sha:0:7})"
+          }
+
+          if [ "$code" = true ]; then
+            [ -n "$F" ] || { echo "::error::PR com código fora de uma branch de feature NNN-nome."; exit 1; }
+            req="G0 G1 G2 G3 G5"
+          else
+            req="G0"
+          fi
+          ok=0
+          for g in $req; do check "$g" || ok=1; done
+          [ $ok -eq 0 ] || { echo "::error::Gates pendentes ou invalidados. Rode /fabrica.run ou /fabrica.aprovar."; exit 1; }

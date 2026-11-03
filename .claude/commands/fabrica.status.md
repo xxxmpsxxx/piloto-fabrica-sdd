@@ -4,8 +4,8 @@ description: "Mostra em que fase a feature atual está, os gates e o próximo pa
 
 # /fabrica.status
 
-1. Rode `./scripts/fabrica/verify-gates.sh` e `git status -sb`.
-2. Se existir `specs/<feature>/tasks.md`, conte tarefas `[X]` vs `[ ]` por fase/história.
-3. Se `gh` estiver disponível, verifique se há PR aberto para a branch (`gh pr view --json state,reviewDecision,statusCheckRollup`), sem alterar nada.
-4. Responda em até 10 linhas: fase atual, gates (✅/⏳/⚠️), pendências e **o próximo comando** a rodar.
-   - Gate ⚠️ INVALIDADO = o artefato mudou depois da aprovação; explique qual arquivo e que precisa de nova revisão humana.
+1. `git status -sb` e identifique a feature pela branch (`NNN-nome`).
+2. Verifique G0, G1, G2, G3 e G5 como descrito no CLAUDE.md (só com git e Read).
+3. Se existir `tasks.md`, conte tarefas `[X]` e `[ ]` por história.
+4. Se houver PR da branch: `gh pr view --json state,reviewDecision,statusCheckRollup` (somente leitura).
+5. Responda em até 8 linhas: gates (✅ aprovado, ⏳ pendente, ⚠️ invalidado), tarefas, PR e **o próximo passo** (normalmente `/fabrica.run` para continuar).
